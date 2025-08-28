@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+
+models/esmc_600m_2024_12_v0.pth

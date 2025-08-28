@@ -138,10 +138,16 @@ class GNNTrainer:
         num_batches = 0
         
         for batch in train_loader:
-            seq_idx, adj, mask, labels = [b.to(self.device) for b in batch]
+            # Support batches with or without ESM embeddings
+            if len(batch) == 5:
+                seq_idx, adj, mask, labels, esm_emb = [b.to(self.device) for b in batch]
+                forward_kwargs = {"esm_emb": esm_emb}
+            else:
+                seq_idx, adj, mask, labels = [b.to(self.device) for b in batch]
+                forward_kwargs = {}
             
             self.optimizer.zero_grad()
-            predictions = self.model(seq_idx, adj, mask)
+            predictions = self.model(seq_idx, adj, mask, **forward_kwargs)
             loss = self.criterion(predictions, labels)
             loss.backward()
             self.optimizer.step()
@@ -169,9 +175,14 @@ class GNNTrainer:
         
         with torch.no_grad():
             for batch in val_loader:
-                seq_idx, adj, mask, labels = [b.to(self.device) for b in batch]
+                if len(batch) == 5:
+                    seq_idx, adj, mask, labels, esm_emb = [b.to(self.device) for b in batch]
+                    forward_kwargs = {"esm_emb": esm_emb}
+                else:
+                    seq_idx, adj, mask, labels = [b.to(self.device) for b in batch]
+                    forward_kwargs = {}
                 
-                predictions = self.model(seq_idx, adj, mask)
+                predictions = self.model(seq_idx, adj, mask, **forward_kwargs)
                 loss = self.criterion(predictions, labels)
                 
                 # Calculate accuracy

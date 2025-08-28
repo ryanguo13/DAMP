@@ -7,7 +7,7 @@ This module contains the GNN scorer and diffusion denoiser models.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple
+from typing import Tuple, Optional
 try:
     from .data import NUM_AA
 except ImportError:
@@ -45,7 +45,8 @@ class GCNLayer(nn.Module):
 class GNNScorer(nn.Module):
     """Graph Neural Network for scoring peptide sequences."""
     
-    def __init__(self, embed_dim: int = 32, hidden_dim: int = 64, num_layers: int = 2):
+    def __init__(self, embed_dim: int = 32, hidden_dim: int = 64, num_layers: int = 2,
+                 esm_embed_dim: Optional[int] = None, use_esm: bool = False):
         """
         Initialize GNN scorer.
         
@@ -53,13 +54,22 @@ class GNNScorer(nn.Module):
             embed_dim: Embedding dimension for amino acids
             hidden_dim: Hidden dimension for GCN layers
             num_layers: Number of GCN layers
+            esm_embed_dim: If provided and use_esm=True, project ESM embeddings of this dim
+            use_esm: If True, expect per-residue esm embeddings as input
         """
         super().__init__()
-        self.embedding = nn.Embedding(NUM_AA + 1, embed_dim)  # +1 for pad token
+        self.use_esm = use_esm
+        if not use_esm:
+            self.embedding = nn.Embedding(NUM_AA + 1, embed_dim)  # +1 for pad token
+            conv_in_dim = embed_dim
+        else:
+            assert esm_embed_dim is not None, "esm_embed_dim must be provided when use_esm=True"
+            self.proj = nn.Linear(esm_embed_dim, hidden_dim)
+            conv_in_dim = hidden_dim
         
         # GCN layers
         self.conv_layers = nn.ModuleList()
-        self.conv_layers.append(GCNLayer(embed_dim, hidden_dim))
+        self.conv_layers.append(GCNLayer(conv_in_dim, hidden_dim))
         for _ in range(num_layers - 1):
             self.conv_layers.append(GCNLayer(hidden_dim, hidden_dim))
         
@@ -67,7 +77,8 @@ class GNNScorer(nn.Module):
         self.fc = nn.Linear(hidden_dim, 1)
         self.dropout = nn.Dropout(0.1)
     
-    def forward(self, seq_idx: torch.Tensor, adj: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, seq_idx: torch.Tensor, adj: torch.Tensor, mask: torch.Tensor,
+                esm_emb: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Forward pass.
         
@@ -75,6 +86,7 @@ class GNNScorer(nn.Module):
             seq_idx: Sequence indices (batch_size, seq_len)
             adj: Adjacency matrix (batch_size, seq_len, seq_len)
             mask: Sequence mask (batch_size, seq_len)
+            esm_emb: Optional per-residue embeddings (batch_size, seq_len, esm_dim)
             
         Returns:
             AMP scores (batch_size,)
@@ -85,7 +97,12 @@ class GNNScorer(nn.Module):
         adj = adj.to(device)
         mask = mask.to(device)
         
-        x = self.embedding(seq_idx)
+        if self.use_esm:
+            assert esm_emb is not None, "ESM embeddings must be provided when use_esm=True"
+            esm_emb = esm_emb.to(device)
+            x = F.relu(self.proj(esm_emb))
+        else:
+            x = self.embedding(seq_idx)
         
         # Apply GCN layers
         for conv in self.conv_layers:
@@ -103,7 +120,8 @@ class GNNScorer(nn.Module):
 class Denoiser(nn.Module):
     """Denoiser network for diffusion model."""
     
-    def __init__(self, embed_dim: int = 32, hidden_dim: int = 128, num_layers: int = 2):
+    def __init__(self, embed_dim: int = 32, hidden_dim: int = 128, num_layers: int = 2,
+                 esm_embed_dim: Optional[int] = None, use_esm: bool = False):
         """
         Initialize denoiser.
         
@@ -111,8 +129,11 @@ class Denoiser(nn.Module):
             embed_dim: Embedding dimension for amino acids
             hidden_dim: Hidden dimension for MLP layers
             num_layers: Number of MLP layers
+            esm_embed_dim: If provided and use_esm=True, project ESM embeddings of this dim
+            use_esm: If True, expect per-residue esm embeddings as input
         """
         super().__init__()
+        self.use_esm = use_esm
         self.embedding = nn.Embedding(NUM_AA + 1, embed_dim)  # +1 for pad token
         
         # Time embedding
@@ -122,10 +143,16 @@ class Denoiser(nn.Module):
             nn.Linear(embed_dim, embed_dim)
         )
         
+        # Optional ESM projection
+        if use_esm:
+            assert esm_embed_dim is not None, "esm_embed_dim must be provided when use_esm=True"
+            self.esm_proj = nn.Linear(esm_embed_dim, hidden_dim)
+            input_dim = embed_dim + embed_dim + hidden_dim  # seq emb + time emb + esm
+        else:
+            input_dim = embed_dim + embed_dim  # sequence + time embedding
+        
         # MLP layers
         layers = []
-        input_dim = embed_dim * 2  # sequence + time embedding
-        
         for i in range(num_layers):
             layers.extend([
                 nn.Linear(input_dim if i == 0 else hidden_dim, hidden_dim),
@@ -136,7 +163,8 @@ class Denoiser(nn.Module):
         self.mlp = nn.Sequential(*layers)
         self.out = nn.Linear(hidden_dim, NUM_AA)
     
-    def forward(self, noised: torch.Tensor, t: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, noised: torch.Tensor, t: torch.Tensor, mask: torch.Tensor,
+                esm_emb: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Forward pass.
         
@@ -144,6 +172,7 @@ class Denoiser(nn.Module):
             noised: Noised sequence indices (batch_size, seq_len)
             t: Time step (batch_size,)
             mask: Sequence mask (batch_size, seq_len)
+            esm_emb: Optional per-residue embeddings (batch_size, seq_len, esm_dim)
             
         Returns:
             Logits for amino acid prediction (batch_size, seq_len, num_aa)
@@ -161,8 +190,15 @@ class Denoiser(nn.Module):
         # Expand time embedding to match sequence length
         t_expanded = t_emb.unsqueeze(1).expand(-1, x.size(1), -1)
         
+        if self.use_esm:
+            assert esm_emb is not None, "ESM embeddings must be provided when use_esm=True"
+            esm_emb = esm_emb.to(device)
+            esm_proj = self.esm_proj(esm_emb)
+            x = torch.cat([x, t_expanded, esm_proj], dim=-1)
+        else:
+            x = torch.cat([x, t_expanded], dim=-1)
+        
         # Concatenate and process
-        x = torch.cat([x, t_expanded], dim=-1)
         x = self.mlp(x)
         x = self.out(x)
         
@@ -174,7 +210,7 @@ class Denoiser(nn.Module):
 class DiffusionModel:
     """Wrapper for diffusion model with training and generation."""
     
-    def __init__(self, denoiser: Denoiser, noise_steps: int = 10):
+    def __init__(self, denoiser: 'Denoiser', noise_steps: int = 10):
         """
         Initialize diffusion model.
         
@@ -208,7 +244,8 @@ class DiffusionModel:
         
         return noised
     
-    def denoise_step(self, noised: torch.Tensor, t: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def denoise_step(self, noised: torch.Tensor, t: torch.Tensor, mask: torch.Tensor,
+                     esm_emb: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Single denoising step.
         
@@ -216,12 +253,13 @@ class DiffusionModel:
             noised: Noised sequences
             t: Current time step
             mask: Sequence mask
+            esm_emb: Optional per-residue embeddings (batch_size, seq_len, esm_dim)
             
         Returns:
             Denoised sequences
         """
         with torch.no_grad():
-            logits = self.denoiser(noised, t, mask)
+            logits = self.denoiser(noised, t, mask, esm_emb=esm_emb)
             probs = F.softmax(logits, dim=-1)
             denoised = torch.multinomial(probs.view(-1, NUM_AA), 1).view(noised.shape)
         return denoised 
