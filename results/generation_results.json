@@ -1,0 +1,96 @@
+{
+  "generated_sequences": [
+    "HNELCFEYREYQGLRIGCHI",
+    "GIGLYDTAGMVNFVSLCIGQ",
+    "RRVPRGILNYGGFYVACGGR",
+    "RACKNRATLARVMKCHPGLR",
+    "AMNQCFYFFEFKHNICNHSS"
+  ],
+  "optimized_sequences": [
+    [
+      "KLAGVKLDWKNGRWWWPGQP",
+      0.8807970779778823
+    ],
+    [
+      "RRLETIKLKCCRRNILTFDC",
+      0.8807970779778823
+    ],
+    [
+      "CKICRGQTFPDCCYKTLDPC",
+      0.8807970779778823
+    ],
+    [
+      "IGGVKGPDCCCRDFTDMGLR",
+      0.8807970779778823
+    ],
+    [
+      "FILGCRRKKKFLTGTHFCLE",
+      0.8807970779778823
+    ],
+    [
+      "KIKMSSKALNTNCIFKHKGV",
+      0.8807970779778823
+    ],
+    [
+      "ADFRGGPGCCCPKDQNARSI",
+      0.8807970779778823
+    ],
+    [
+      "YAIRAAAIRGLRFRKIGCGP",
+      0.8807970779778823
+    ],
+    [
+      "GLNLTLPKARGRSGGKLKIG",
+      0.8807970779778823
+    ],
+    [
+      "RLWGSNRITRWPSKDICDLG",
+      0.8807970779778823
+    ],
+    [
+      "CAKAIGQRVGVRSNIKVSAK",
+      0.8807970779778823
+    ],
+    [
+      "LGLIDSYRQCKVRPCGHEGC",
+      0.8807970779778823
+    ],
+    [
+      "WCFGHYAECAIAERNATLCC",
+      0.8807970779778823
+    ],
+    [
+      "DLCACGIVKAKWGRGSLLLC",
+      0.8807970779778823
+    ],
+    [
+      "YSGSAKKCGGCVVCHYALIL",
+      0.8807970779778823
+    ]
+  ],
+  "quality_metrics": {
+    "num_sequences": 5,
+    "avg_length": 20.0,
+    "length_std": 0.0,
+    "kl_divergence": 0.1924774814876934,
+    "aa_coverage": 0.95,
+    "avg_aa_frequency": 0.05,
+    "diversity_score": 0.95,
+    "unique_ratio": 1.0,
+    "avg_similarity": 0.05,
+    "valid_sequence_ratio": 1.0,
+    "valid_aa_ratio": 1.0
+  },
+  "amp_metrics": {
+    "avg_amp_score": 0.659378762657379,
+    "amp_score_std": 0.18048519065213153,
+    "amp_ratio": 1.0,
+    "high_amp_ratio": 0.4,
+    "low_amp_ratio": 0.0,
+    "score_range": [
+      0.5000218410714158,
+      0.8807970779778823
+    ]
+  },
+  "timestamp": "2025-08-25T13:25:55.907247"
+}
